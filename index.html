@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dream Riders Staff Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a1628;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      text-align: center;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    .header { margin-bottom: 24px; }
+    .header h1 { font-size: 24px; font-weight: 900; color: #FFD700; letter-spacing: 1px; }
+    .header p { font-size: 13px; color: #8899aa; margin-top: 6px; }
+    #reader {
+      width: 100%;
+      max-width: 340px;
+      margin: 0 auto 24px;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 2px solid #FFD70055;
+    }
+    #result {
+      max-width: 380px;
+      margin: 0 auto;
+      padding: 20px;
+      border-radius: 16px;
+      display: none;
+      text-align: left;
+    }
+    .result-title { font-size: 22px; font-weight: 900; margin-bottom: 12px; text-align: center; }
+    .badge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .badge-gold { background: #FFD700; color: #000; }
+    .badge-green { background: #10B981; color: #fff; }
+    .badge-red { background: #EF4444; color: #fff; }
+    .badge-gray { background: #374151; color: #ccc; }
+    .badge-ride { background: #059669; color: #fff; font-size: 16px; font-weight: 900; }
+    .ride-code { font-family: monospace; font-size: 22px; font-weight: 900; color: #fff; letter-spacing: 4px; margin: 4px 0 0; display: block; }
+    .member-id { color: #8899aa; font-family: monospace; font-size: 11px; margin-top: 12px; text-align: center; }
+    .scan-next-btn {
+      display: block;
+      width: 100%;
+      margin-top: 20px;
+      padding: 14px;
+      background: #FFD700;
+      border: none;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: 900;
+      cursor: pointer;
+      color: #000;
+      letter-spacing: 0.5px;
+    }
+    .scan-next-btn:hover { background: #f5c800; }
+    .error-box {
+      max-width: 380px;
+      margin: 0 auto;
+      padding: 16px;
+      background: #1f2937;
+      border-radius: 12px;
+      color: #EF4444;
+      display: none;
+    }
+    .scanning-label {
+      color: #8899aa;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🎢 Dream Riders</h1>
+    <p>Staff Member Scanner — Point camera at guest QR code</p>
+  </div>
+
+  <p class="scanning-label" id="scanningLabel">Scanning for QR code...</p>
+  <div id="reader"></div>
+  <div id="result"></div>
+  <div class="error-box" id="errorBox"></div>
+
+  <script>
+    const html5QrCode = new Html5Qrcode("reader");
+
+    html5QrCode.start(
+      { facingMode: "environment" },
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      (decodedText) => {
+        html5QrCode.stop().catch(() => {});
+        document.getElementById('scanningLabel').style.display = 'none';
+        showResult(decodedText);
+      },
+      () => {} // ignore per-frame errors
+    ).catch((err) => {
+      const box = document.getElementById('errorBox');
+      box.style.display = 'block';
+      box.textContent = 'Camera error: ' + err + '. Please allow camera access and reload.';
+    });
+
+    function showResult(decodedText) {
+      const resultEl = document.getElementById('result');
+      resultEl.style.display = 'block';
+
+      try {
+        // Parse payload: dreamriders://member/<base64>
+        const memberPrefix = 'dreamriders://member/';
+        const checkinPrefix = 'dreamriders://checkin/';
+
+        if (!decodedText.startsWith(memberPrefix) && !decodedText.startsWith(checkinPrefix)) {
+          throw new Error('Not a Dream Riders QR code');
+        }
+
+        if (decodedText.startsWith(checkinPrefix)) {
+          // Legacy check-in QR — just show UID
+          const uid = decodedText.replace(checkinPrefix, '');
+          resultEl.style.background = '#1f2937';
+          resultEl.innerHTML = `
+            <div class="result-title">🎫 Explorer</div>
+            <div class="badge badge-gray">📱 Legacy QR Code</div>
+            <p class="member-id">UID: ${uid.slice(0, 12).toUpperCase()}</p>
+            <button class="scan-next-btn" onclick="location.reload()">Scan Next Guest</button>
+          `;
+          return;
+        }
+
+        const encoded = decodedText.replace(memberPrefix, '');
+        const payload = JSON.parse(atob(encoded));
+
+        const isChampion = payload.type === 'champion';
+        const isExplorer = payload.type === 'explorer';
+        const isSubscribed = isChampion || isExplorer;
+
+        resultEl.style.background = isChampion ? '#2d1b69' : isExplorer ? '#064e3b' : '#1f2937';
+
+        let html = `<div class="result-title">`;
+        if (isChampion) html += '👑 CHAMPION MEMBER';
+        else if (isExplorer) html += '🌟 EXPLORER MEMBER';
+        else html += '🎫 Visitor (No Subscription)';
+        html += '</div>';
+
+        if (isSubscribed) {
+          html += `<div class="badge badge-gold">⚡ SKIP THE LINE — APPROVED</div>`;
+        }
+
+        if (payload.waiverSigned) {
+          html += `<div class="badge badge-green">✅ WAIVER ON FILE</div>`;
+        } else {
+          html += `<div class="badge badge-red">⚠️ NO WAIVER — Must complete before riding</div>`;
+        }
+
+        if (payload.freeRideAvailable && payload.freeRideDuration > 0) {
+          html += `
+            <div class="badge badge-ride">
+              <span>🎢 FREE ${payload.freeRideDuration}-MIN RIDE</span>
+            </div>
+            <span class="ride-code">${payload.uid ? 'DR-RIDE-' + payload.uid.slice(0,6).toUpperCase() : 'RIDE READY'}</span>
+          `;
+        }
+
+        if (!isSubscribed && !payload.waiverSigned) {
+          html += `<div class="badge badge-gray">Standard entry — no skip-the-line</div>`;
+        }
+
+        const memberSince = payload.memberSince
+          ? new Date(payload.memberSince).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
+          : 'Unknown';
+        html += `<p class="member-id">Member since ${memberSince} · ID: ${payload.uid?.slice(0,8).toUpperCase()}</p>`;
+        html += `<button class="scan-next-btn" onclick="location.reload()">Scan Next Guest</button>`;
+
+        resultEl.innerHTML = html;
+
+      } catch (e) {
+        resultEl.style.background = '#1f2937';
+        resultEl.innerHTML = `
+          <div class="result-title" style="color:#EF4444">❌ Invalid QR</div>
+          <div class="badge badge-red">Not a valid Dream Riders QR code</div>
+          <button class="scan-next-btn" onclick="location.reload()">Try Again</button>
+        `;
+      }
+    }
+  </script>
+</body>
+</html>
